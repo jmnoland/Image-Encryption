@@ -7,9 +7,21 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+	"encoding/json"
 	"os"
 )
 
+type Settings struct {
+	BasePath string `json:"BasePath"`
+	OutputPath string `json:"OutputPath"`
+	Password string `json:"Password"`
+	Encrypt bool `json:"Encrypt"`
+}
+
+type FileDetails struct {
+	Name string
+	IsDir bool
+}
 
 func NewEncryptionKey() *[32]byte {
 	key := [32]byte{}
@@ -73,22 +85,56 @@ func SaveFile(fileName string, content []byte) {
 	checkErr(err)
 }
 
-func main() {
-	file, err := os.Open("test.jpg")
+func getSettings() Settings {
+	jsonFile, err := os.Open("settings.json")
+	checkErr(err)
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+
+	var settings Settings
+	json.Unmarshal(byteValue, &settings)
+
+	defer jsonFile.Close()
+	return settings
+}
+
+func IOReadDir(root string) ([]FileDetails, error) {
+    var files []FileDetails
+    fileInfo, err := ioutil.ReadDir(root)
+    if err != nil {
+        return files, err
+    }
+
+    for _, file := range fileInfo {
+		details := FileDetails { IsDir: file.IsDir(), Name: file.Name() }
+        files = append(files, details)
+    }
+    return files, nil
+}
+
+func ReadImage(key *[32]byte, path string, fileName string, outputPath string) {
+	file, err := os.Open(path + fileName)
 	checkErr(err)
 	fstats, err := file.Stat()
 	checkErr(err)
 	data := make([]byte, fstats.Size())
 	checkErr(err)
+	en, err := Encrypt(data, key)
+	checkErr(err)
+	SaveFile(outputPath + fileName, en)
+}
+
+func main() {
+	settings := getSettings()
 
 	key := NewEncryptionKey()
 
-	en, err := Encrypt(data, key)
+	files, err := IOReadDir(settings.BasePath)
 	checkErr(err)
-	SaveFile("encrypted.jpg", en)
 
-	pl, err := Decrypt(en, key)
-	SaveFile("decrypted.jpg", pl)
-	checkErr(err)
+	for _, file := range files {
+		if !file.IsDir {
+			ReadImage(key, settings.BasePath, file.Name, settings.OutputPath)
+		}
+	}
 
 }

@@ -1,0 +1,6 @@
+{
+    "BasePath": "images/",
+    "OutputPath": "encrypted/",
+    "Password": "password123",
+    "Encrypt": true
+}
