@@ -3,7 +3,8 @@ package main
 import (
     "crypto/aes"
     "crypto/cipher"
-    "crypto/rand"
+	"crypto/rand"
+	"golang.org/x/crypto/argon2"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -15,6 +16,7 @@ type Settings struct {
 	BasePath string `json:"BasePath"`
 	OutputPath string `json:"OutputPath"`
 	Password string `json:"Password"`
+	Salt string `json:"Salt"`
 	Encrypt bool `json:"Encrypt"`
 }
 
@@ -23,17 +25,17 @@ type FileDetails struct {
 	IsDir bool
 }
 
-func NewEncryptionKey() *[32]byte {
-	key := [32]byte{}
+func NewEncryptionKey(password string, salt string) []byte {
+	key := argon2.IDKey([]byte(password), []byte(salt), 1, 64*1024, 4, 32)
 	_, err := io.ReadFull(rand.Reader, key[:])
 	if err != nil {
 		panic(err)
 	}
-	return &key
+	return key
 }
 
-func Encrypt(plaintext []byte, key *[32]byte) (ciphertext []byte, err error) {
-	block, err := aes.NewCipher(key[:])
+func Encrypt(plaintext []byte, key []byte) (ciphertext []byte, err error) {
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
@@ -52,8 +54,8 @@ func Encrypt(plaintext []byte, key *[32]byte) (ciphertext []byte, err error) {
 	return gcm.Seal(nonce, nonce, plaintext, nil), nil
 }
 
-func Decrypt(ciphertext []byte, key *[32]byte) (plaintext []byte, err error) {
-	block, err := aes.NewCipher(key[:])
+func Decrypt(ciphertext []byte, key []byte) (plaintext []byte, err error) {
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +113,7 @@ func IOReadDir(root string) ([]FileDetails, error) {
     return files, nil
 }
 
-func ReadImage(key *[32]byte, path string, fileName string, outputPath string) {
+func ReadImage(key []byte, path string, fileName string, outputPath string) {
 	file, err := os.Open(path + fileName)
 	checkErr(err)
 	fstats, err := file.Stat()
@@ -126,7 +128,7 @@ func ReadImage(key *[32]byte, path string, fileName string, outputPath string) {
 func main() {
 	settings := getSettings()
 
-	key := NewEncryptionKey()
+	key := NewEncryptionKey(settings.Password, settings.Salt)
 
 	files, err := IOReadDir(settings.BasePath)
 	checkErr(err)
@@ -136,5 +138,4 @@ func main() {
 			ReadImage(key, settings.BasePath, file.Name, settings.OutputPath)
 		}
 	}
-
 }

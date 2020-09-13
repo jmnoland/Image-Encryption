@@ -2,5 +2,6 @@
     "BasePath": "images/",
     "OutputPath": "encrypted/",
     "Password": "password123",
+    "Salt": "salt",
     "Encrypt": true
 }
