@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"golang.org/x/crypto/argon2"
 	"errors"
+	"strings"
 	"io"
 	"io/ioutil"
 	"encoding/json"
@@ -113,7 +114,7 @@ func IOReadDir(root string) ([]FileDetails, error) {
     return files, nil
 }
 
-func ReadImage(key []byte, path string, fileName string, outputPath string) {
+func EncryptImage(key []byte, path string, fileName string, outputPath string) {
 	file, err := os.Open(path + fileName)
 	checkErr(err)
 	fstats, err := file.Stat()
@@ -125,17 +126,27 @@ func ReadImage(key []byte, path string, fileName string, outputPath string) {
 	SaveFile(outputPath + fileName, en)
 }
 
-func main() {
-	settings := getSettings()
-
-	key := NewEncryptionKey(settings.Password, settings.Salt)
-
-	files, err := IOReadDir(settings.BasePath)
+func Explorer(key []byte, currentPath string, outputPath string) {
+	files, err := IOReadDir(currentPath)
 	checkErr(err)
 
 	for _, file := range files {
 		if !file.IsDir {
-			ReadImage(key, settings.BasePath, file.Name, settings.OutputPath)
+			EncryptImage(key, currentPath, file.Name, outputPath + currentPath)
+		} else {
+			var path strings.Builder
+			path.WriteString(currentPath)
+			path.WriteString(file.Name)
+			path.WriteString("/")
+			os.MkdirAll(outputPath + path.String(), os.ModePerm)
+			Explorer(key, path.String(), outputPath)
 		}
 	}
+}
+
+func main() {
+	settings := getSettings()
+
+	key := NewEncryptionKey(settings.Password, settings.Salt)
+	Explorer(key, settings.BasePath, settings.OutputPath)
 }
