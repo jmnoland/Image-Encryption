@@ -26,12 +26,10 @@ type FileDetails struct {
 	IsDir bool
 }
 
+var settings Settings
+
 func NewEncryptionKey(password string, salt string) []byte {
 	key := argon2.IDKey([]byte(password), []byte(salt), 1, 64*1024, 4, 32)
-	_, err := io.ReadFull(rand.Reader, key[:])
-	if err != nil {
-		panic(err)
-	}
 	return key
 }
 
@@ -66,13 +64,13 @@ func Decrypt(ciphertext []byte, key []byte) (plaintext []byte, err error) {
 		return nil, err
 	}
 
-	if len(ciphertext) < gcm.NonceSize() {
+	nonce := gcm.NonceSize()
+	if len(ciphertext) < nonce {
 		return nil, errors.New("malformed ciphertext")
 	}
-
 	return gcm.Open(nil,
-		ciphertext[:gcm.NonceSize()],
-		ciphertext[gcm.NonceSize():],
+		ciphertext[:nonce],
+		ciphertext[nonce:],
 		nil,
 	)
 }
@@ -114,16 +112,18 @@ func IOReadDir(root string) ([]FileDetails, error) {
     return files, nil
 }
 
-func EncryptImage(key []byte, path string, fileName string, outputPath string) {
-	file, err := os.Open(path + fileName)
+func ProcessFile(key []byte, path string, fileName string, outputPath string) {
+	data, err := ioutil.ReadFile(path + fileName)
 	checkErr(err)
-	fstats, err := file.Stat()
-	checkErr(err)
-	data := make([]byte, fstats.Size())
-	checkErr(err)
-	en, err := Encrypt(data, key)
-	checkErr(err)
-	SaveFile(outputPath + fileName, en)
+	var outputData []byte
+	if settings.Encrypt {
+		outputData, err = Encrypt(data, key)
+		checkErr(err)
+	} else {
+		outputData, err = Decrypt(data, key)
+		checkErr(err)
+	}
+	SaveFile(outputPath + fileName, outputData)
 }
 
 func Explorer(key []byte, currentPath string, outputPath string) {
@@ -132,7 +132,7 @@ func Explorer(key []byte, currentPath string, outputPath string) {
 
 	for _, file := range files {
 		if !file.IsDir {
-			EncryptImage(key, currentPath, file.Name, outputPath + currentPath)
+			ProcessFile(key, currentPath, file.Name, outputPath + currentPath)
 		} else {
 			var path strings.Builder
 			path.WriteString(currentPath)
@@ -145,7 +145,7 @@ func Explorer(key []byte, currentPath string, outputPath string) {
 }
 
 func main() {
-	settings := getSettings()
+	settings = getSettings()
 
 	key := NewEncryptionKey(settings.Password, settings.Salt)
 	Explorer(key, settings.BasePath, settings.OutputPath)
